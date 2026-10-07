@@ -103,7 +103,7 @@ const Dashboard = () => {
               Depot Management Dashboard
             </h2>
             <span className="bg-blue-600 text-white font-black text-xs px-3 py-1 rounded-full uppercase tracking-wider">
-              {userRole.replace('_', ' ')}
+              {(userRole || 'super_admin').replace('_', ' ')}
             </span>
           </div>
           <p className="text-slate-500 font-medium mt-1">{today}</p>

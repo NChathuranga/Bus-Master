@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   User, Lock, ArrowRight, Loader2, BusFront, 
-  AlertCircle, ShieldCheck, ChevronDown 
+  AlertCircle, ShieldCheck, ChevronDown, Mail 
 } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -28,12 +28,13 @@ const slides = [
 
 const Register = () => {
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState('staff');
+  const [role, setRole] = useState('driver');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
+
   // Image Slider State
   const [currentSlide, setCurrentSlide] = useState(0);
 
@@ -52,9 +53,14 @@ const Register = () => {
     e.preventDefault();
     setError('');
 
+    if (email && !email.includes('@')) {
+      setError('Please enter a valid email address containing @ (e.g. driver@busmaster.lk)');
+      return;
+    }
+
     // Password Matching Check
     if (password !== confirmPassword) {
-      setError('Passwords do not match! Please verify both password entries. (මුරපද දෙක සමාන නොවේ)');
+      setError('Passwords do not match! Please verify both password entries.');
       return;
     }
 
@@ -65,7 +71,7 @@ const Register = () => {
 
     setLoading(true);
     try {
-      const { data } = await api.post('/auth/register', { username, password, role });
+      const { data } = await api.post('/auth/register', { username, email, password, role });
       login(data);
       navigate('/');
     } catch (err) {
@@ -123,6 +129,18 @@ const Register = () => {
                   placeholder="Choose a username"
                   className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all placeholder:text-slate-400 placeholder:font-normal"
                   required
+                />
+              </div>
+
+              {/* Email Input (Optional with @ validation) */}
+              <div className="relative group">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email Address (e.g. driver@busmaster.lk)"
+                  className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all placeholder:text-slate-400 placeholder:font-normal"
                 />
               </div>
 

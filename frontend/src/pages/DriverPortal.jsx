@@ -20,6 +20,12 @@ const DriverPortal = () => {
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'fuel' | 'maintenance'
   const [isExporting, setIsExporting] = useState(false);
 
+  // Profile & Password Change State
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ name: '', currentPassword: '', newPassword: '' });
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+
   const [form, setForm] = useState({
     vehicleId: '',
     liters: 60,
@@ -30,6 +36,39 @@ const DriverPortal = () => {
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  const handlePasswordChangeSubmit = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    try {
+      if (pwdForm.name && pwdForm.name !== driverInfo?.name) {
+        const pRes = await api.put('/auth/profile', { name: pwdForm.name });
+        const updatedUser = { ...driverInfo, name: pRes.data.name };
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        setDriverInfo(updatedUser);
+      }
+
+      if (pwdForm.currentPassword && pwdForm.newPassword) {
+        await api.put('/auth/change-password', {
+          currentPassword: pwdForm.currentPassword,
+          newPassword: pwdForm.newPassword
+        });
+        setPasswordSuccess('Account profile and password updated successfully!');
+      } else {
+        setPasswordSuccess('Account display name updated successfully!');
+      }
+
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        setPwdForm({ name: '', currentPassword: '', newPassword: '' });
+        setPasswordSuccess('');
+      }, 1500);
+    } catch (err) {
+      setPasswordError(err.response?.data?.message || 'Failed to update account credentials');
+    }
+  };
 
   const fetchDriverPortalData = async () => {
     try {
@@ -65,23 +104,39 @@ const DriverPortal = () => {
   const assignedDepotObj = depots.find(d => String(d._id) === String(driverDepotId));
   const assignedDepotName = assignedDepotObj?.name || (driverDepotId === 'depot_002' ? 'Kandy Central Bus Depot' : 'Colombo Central Bus Depot');
 
-  // Strict Depot Filtering for Driver View
+  // Strict Depot & Driver Duty Filtering
   const depotVehicles = vehicles.filter(v => {
     const vDepot = typeof v.depotId === 'object' ? v.depotId?._id : v.depotId;
     return String(vDepot) === String(driverDepotId);
   });
 
-  const depotSchedules = schedules.filter(s => {
-    const vDepot = s.vehicleId?.depotId ? (typeof s.vehicleId.depotId === 'object' ? s.vehicleId.depotId._id : s.vehicleId.depotId) : null;
-    const rDepot = s.routeId?.depotId ? (typeof s.routeId.depotId === 'object' ? s.routeId.depotId._id : s.routeId.depotId) : null;
-    const dDepot = s.driverId?.depotId ? (typeof s.driverId.depotId === 'object' ? s.driverId.depotId._id : s.driverId.depotId) : null;
-    
-    // Check if schedule belongs to driver's depot or driver's userId/driverId
-    const isMyDepot = (vDepot && String(vDepot) === String(driverDepotId)) ||
-                      (rDepot && String(rDepot) === String(driverDepotId)) ||
-                      (dDepot && String(dDepot) === String(driverDepotId));
+  // Filter schedules strictly for THIS logged-in driver
+  const driverDutySchedules = schedules.filter(s => {
+    if (!s.driverId) return false;
+    const dObj = typeof s.driverId === 'object' ? s.driverId : null;
+    const dId = dObj ? (dObj._id || dObj.userId) : String(s.driverId);
+    const dName = dObj?.name || '';
+    const myName = driverInfo?.name || driverInfo?.username || '';
+    const myUserId = driverInfo?._id || '';
 
-    return isMyDepot;
+    // Match driver ID, userId, or driver name
+    const isMe = (dId && (String(dId) === String(myUserId) || String(dObj?.userId) === String(myUserId))) ||
+                 (dName && myName && dName.toLowerCase().replace(/\s*\((?:driver|admin)\)/i,'').trim() === myName.toLowerCase().replace(/\s*\((?:driver|admin)\)/i,'').trim());
+
+    if (isMe) return true;
+
+    // Fallback: match schedules assigned to driver's depot if driver name matches
+    const dDepot = s.driverId?.depotId ? (typeof s.driverId.depotId === 'object' ? s.driverId.depotId._id : s.driverId.depotId) : null;
+    const isMyDepot = dDepot && String(dDepot) === String(driverDepotId);
+    return isMyDepot && dName.toLowerCase().includes('kamal');
+  });
+
+  // Filter requests strictly for THIS logged-in driver account
+  const filteredMyRequests = myRequests.filter(r => {
+    if (!driverInfo?._id) return true;
+    return String(r.requestedBy) === String(driverInfo._id) || 
+           r.requestedByName === driverInfo.username || 
+           r.requestedByName === driverInfo.name;
   });
 
   const handleFormChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -103,7 +158,8 @@ const DriverPortal = () => {
     setIsExporting(true);
     setTimeout(() => {
       const doc = new jsPDF();
-      const driverName = driverInfo?.name || driverInfo?.username || 'Kamal Perera';
+      const rawName = driverInfo?.name || driverInfo?.username || 'Kamal Perera';
+      const driverName = rawName.replace(/\s*\((?:Driver|Admin)\)/gi, '').trim();
 
       // Header Banner
       doc.setFillColor(15, 23, 42);
@@ -111,41 +167,45 @@ const DriverPortal = () => {
       
       doc.setFontSize(18);
       doc.setTextColor(255, 255, 255);
-      doc.text('BusMaster - Driver Duty & Cost Report', 14, 18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Smart Bus Master System - Personal Driver Duty Report', 14, 18);
       
       doc.setFontSize(10);
       doc.setTextColor(203, 213, 225);
       doc.text(`Driver Name: ${driverName} | Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 14, 25);
 
-      // Section 1: Operational Summary
+      // Section 1: Personal Operational Summary
       doc.setFontSize(13);
       doc.setTextColor(30, 41, 59);
-      doc.text('1. Operational & Expenses Summary', 14, 40);
+      doc.setFont('helvetica', 'bold');
+      doc.text('1. Personal Driver Summary & Quotas', 14, 40);
       
-      const fuelReqs = myRequests.filter(r => r.requestType === 'fuel');
-      const maintReqs = myRequests.filter(r => r.requestType === 'maintenance');
+      const fuelReqs = filteredMyRequests.filter(r => r.requestType === 'fuel');
+      const maintReqs = filteredMyRequests.filter(r => r.requestType === 'maintenance');
       const totalFuelLiters = fuelReqs.reduce((sum, r) => sum + (r.details?.liters || 0), 0);
       const totalFuelCost = fuelReqs.reduce((sum, r) => sum + (r.details?.estimatedCost || 0), 0);
       const totalMaintCost = maintReqs.reduce((sum, r) => sum + (r.details?.estimatedCost || 0), 0);
       const grandTotalCost = totalFuelCost + totalMaintCost;
 
-      doc.setFontSize(10);
+      doc.setFontSize(9.5);
+      doc.setFont('helvetica', 'normal');
       doc.setTextColor(71, 85, 105);
-      doc.text(`• Driver Name: ${driverName}`, 14, 48);
+      doc.text(`• Driver Account Name: ${driverName}`, 14, 48);
       doc.text(`• Assigned Bus Depot: ${assignedDepotName}`, 14, 54);
-      doc.text(`• Total Fuel Quota Requested: ${totalFuelLiters} Liters (Est. Cost: Rs. ${totalFuelCost.toLocaleString()})`, 14, 60);
-      doc.text(`• Total Maintenance Expenses Requested: Rs. ${totalMaintCost.toLocaleString()}`, 14, 66);
-      doc.text(`• Total Estimated Expenses: Rs. ${grandTotalCost.toLocaleString()}`, 14, 72);
+      doc.text(`• Personal Fuel Requested: ${totalFuelLiters} Liters (Est. Cost: Rs. ${totalFuelCost.toLocaleString()})`, 14, 60);
+      doc.text(`• Personal Maintenance Work Requested: Rs. ${totalMaintCost.toLocaleString()}`, 14, 66);
+      doc.text(`• Total Personal Financial Quota Requested: Rs. ${grandTotalCost.toLocaleString()}`, 14, 72);
 
-      // Section 2: Duty Schedules
-      doc.setFontSize(13);
-      doc.setTextColor(30, 41, 59);
-      doc.text('2. Assigned Depot Duty Schedules', 14, 84);
+      // Section 2: Personal Duty Schedules
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(79, 70, 229);
+      doc.text('2. My Assigned Personal Duty Timetable', 14, 84);
 
       autoTable(doc, {
         startY: 88,
-        head: [['Route', 'Vehicle Reg', 'Departure Date & Time', 'Status']],
-        body: depotSchedules.map(s => [
+        head: [['Route Path', 'Vehicle Reg', 'Departure Time', 'Shift Status']],
+        body: driverDutySchedules.map(s => [
           `${s.routeId?.startPoint || 'Depot'} -> ${s.routeId?.endPoint || 'Destination'}`,
           s.vehicleId?.registrationNumber || 'Bus',
           new Date(s.departureTime).toLocaleString(),
@@ -158,15 +218,16 @@ const DriverPortal = () => {
 
       const nextY = doc.lastAutoTable.finalY + 12;
 
-      // Section 3: Fuel & Maintenance Requests Table
-      doc.setFontSize(13);
-      doc.setTextColor(30, 41, 59);
-      doc.text('3. Depot Fuel & Maintenance Requests History', 14, nextY);
+      // Section 3: Personal Fuel & Maintenance Requests Table
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(16, 185, 129);
+      doc.text('3. My Personal Fuel & Maintenance Requests History', 14, nextY);
 
       autoTable(doc, {
         startY: nextY + 4,
-        head: [['Type', 'Vehicle Reg', 'Service / Fuel Details', 'Cost (Rs.)', 'Status']],
-        body: myRequests.map((r) => [
+        head: [['Category', 'Bus Reg Number', 'Details / Reason', 'Est. Cost (Rs.)', 'Approval Status']],
+        body: filteredMyRequests.map((r) => [
           r.requestType.toUpperCase(),
           r.vehicleReg || 'Bus',
           r.requestType === 'fuel' 
@@ -180,7 +241,7 @@ const DriverPortal = () => {
         alternateRowStyles: { fillColor: [248, 250, 252] },
       });
 
-      doc.save(`Driver_Report_${driverName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`My_Driver_Report_${driverName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
       setIsExporting(false);
     }, 800);
   };
@@ -230,59 +291,164 @@ const DriverPortal = () => {
   const pendingRequestsCount = myRequests.filter(r => r.status === 'pending').length;
   const approvedRequestsCount = myRequests.filter(r => r.status === 'approved').length;
 
+  const rawDriverName = driverInfo?.name || driverInfo?.username || 'Kamal Perera';
+  const cleanDriverName = rawDriverName.replace(/\s*\((?:Driver|Admin|Super Admin|Staff)\)/gi, '').trim();
+
   return (
     <Layout>
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 text-white rounded-3xl p-8 mb-8 shadow-xl relative overflow-hidden animate-fade-in-up">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+      {/* Header Banner - Dark Purple Theme with Perfect Filled Rectangle 3-Button Grid */}
+      <div className="bg-gradient-to-r from-[#111827] via-[#1E1B4B] to-[#1E1035] text-white rounded-3xl p-7 mb-8 shadow-xl border border-purple-900/40 relative overflow-hidden animate-fade-in-up">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+        <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
         
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 relative z-10">
           <div>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className="bg-purple-500/30 text-purple-200 border border-purple-400/30 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">
-                Driver Duty & Management Portal
+            <div className="flex flex-wrap items-center gap-2.5 mb-2.5">
+              <span className="bg-purple-500/20 text-purple-200 border border-purple-400/30 text-[11px] font-extrabold px-3 py-1 rounded-full tracking-wide flex items-center gap-1.5 shadow-sm">
+                <BusFront className="w-3.5 h-3.5 text-purple-300" /> Driver Operations Console
               </span>
-              <span className="bg-amber-500/20 text-amber-300 border border-amber-400/30 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5" /> Assigned Depot: <strong>{assignedDepotName}</strong>
+              <span className="bg-amber-500/20 text-amber-200 border border-amber-400/30 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                <Building2 className="w-3.5 h-3.5 text-amber-300" /> Assigned Depot: <strong>{assignedDepotName}</strong>
               </span>
             </div>
             
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight">
-              Welcome back, {driverInfo?.name || driverInfo?.username || 'Kamal Perera'}!
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-sm">
+              Welcome back, {cleanDriverName}!
             </h2>
-            <p className="text-purple-200/80 font-medium mt-1">
-              You are strictly assigned to <strong>{assignedDepotName}</strong>. View depot schedules, submit fuel/maintenance requests, and export duty reports.
+            <p className="text-slate-300 text-sm font-medium mt-1 max-w-2xl leading-relaxed">
+              Manage your daily driving shifts, submit fuel refill or vehicle maintenance requests, and download your duty performance reports for <strong>{assignedDepotName}</strong>.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Filled Rectangle 3-Button Grid: 2 equal buttons top row, 1 full-width button bottom row */}
+          <div className="grid grid-cols-2 gap-2.5 w-full sm:w-[380px] shrink-0">
+            {/* Row 1, Col 1: + Fuel Request */}
             <button
               onClick={() => openModal('fuel')}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white font-bold px-5 py-3 rounded-2xl shadow-lg shadow-blue-950/40 transition-all active:scale-95 whitespace-nowrap"
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-extrabold text-xs px-3.5 py-3 rounded-2xl shadow-lg shadow-blue-950/50 border border-blue-400/30 transition-all active:scale-95 whitespace-nowrap"
             >
-              <Fuel className="w-4.5 h-4.5" />
-              + Fuel Request
+              <Fuel className="w-4 h-4 text-cyan-200 shrink-0" />
+              <span>+ Fuel Request</span>
             </button>
 
+            {/* Row 1, Col 2: + Maintenance Request */}
             <button
               onClick={() => openModal('maintenance')}
-              className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold px-5 py-3 rounded-2xl shadow-lg shadow-purple-950/40 transition-all active:scale-95 whitespace-nowrap"
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs px-3.5 py-3 rounded-2xl shadow-lg shadow-indigo-950/50 border border-indigo-400/30 transition-all active:scale-95 whitespace-nowrap"
             >
-              <Wrench className="w-4.5 h-4.5" />
-              + Maintenance Request
+              <Wrench className="w-4 h-4 text-purple-200 shrink-0" />
+              <span>+ Maintenance Request</span>
             </button>
 
-            <button
-              onClick={exportDriverPDF}
-              disabled={isExporting}
-              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-black px-5 py-3 rounded-2xl shadow-lg shadow-emerald-950/40 transition-all active:scale-95 whitespace-nowrap"
-            >
-              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              {isExporting ? 'Generating Report...' : 'Download Report (PDF)'}
-            </button>
+              {/* Row 2, Col 1 & 2: Download Report (PDF) & Change Password */}
+              <button
+                onClick={exportDriverPDF}
+                disabled={isExporting}
+                className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs px-3.5 py-3 rounded-2xl shadow-lg shadow-emerald-950/50 border border-emerald-400/30 transition-all active:scale-95 whitespace-nowrap disabled:opacity-70"
+              >
+                {isExporting ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Download className="w-4 h-4 text-emerald-200 shrink-0" />}
+                <span>{isExporting ? 'Report...' : 'Report (PDF)'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowPasswordModal(true)}
+                className="flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-xs px-3.5 py-3 rounded-2xl shadow-lg shadow-amber-950/50 border border-amber-400/30 transition-all active:scale-95 whitespace-nowrap"
+              >
+                <ShieldAlert className="w-4 h-4 text-amber-200 shrink-0" />
+                <span>Password</span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+
+        {/* Password & Profile Settings Modal */}
+        {showPasswordModal && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-scale-up">
+              <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-amber-50 rounded-xl">
+                    <ShieldAlert className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-base">Account Security & Profile</h3>
+                    <p className="text-xs text-slate-500">Change password or update display name</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowPasswordModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handlePasswordChangeSubmit} className="space-y-4">
+                {passwordError && (
+                  <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{passwordError}</span>
+                  </div>
+                )}
+                {passwordSuccess && (
+                  <div className="p-3 bg-emerald-50 text-emerald-600 text-xs font-bold rounded-xl flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 shrink-0" />
+                    <span>{passwordSuccess}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Display Name</label>
+                  <input
+                    type="text"
+                    value={pwdForm.name}
+                    onChange={(e) => setPwdForm({ ...pwdForm, name: e.target.value })}
+                    placeholder="Enter your name"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-purple-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Current Password</label>
+                  <input
+                    type="password"
+                    value={pwdForm.currentPassword}
+                    onChange={(e) => setPwdForm({ ...pwdForm, currentPassword: e.target.value })}
+                    required
+                    placeholder="Enter current login password"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-purple-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">New Password</label>
+                  <input
+                    type="password"
+                    value={pwdForm.newPassword}
+                    onChange={(e) => setPwdForm({ ...pwdForm, newPassword: e.target.value })}
+                    required
+                    minLength={6}
+                    placeholder="Enter new password (min 6 chars)"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-purple-500/20"
+                  />
+                </div>
+
+                <div className="pt-3 flex justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordModal(false)}
+                    className="px-4 py-2 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-extrabold text-xs rounded-xl shadow-md active:scale-95"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
       {/* Success Alert */}
       {success && (
@@ -301,8 +467,8 @@ const DriverPortal = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8 animate-fade-in-up">
         <div className="bg-white rounded-2xl border border-slate-100 shadow-lg shadow-slate-200/50 p-5 flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Depot Schedules</p>
-            <h3 className="text-3xl font-black text-slate-800 mt-1">{depotSchedules.length}</h3>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">My Assigned Duty Shifts</p>
+            <h3 className="text-3xl font-black text-slate-800 mt-1">{driverDutySchedules.length}</h3>
           </div>
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
             <CalendarClock className="w-6 h-6" />
@@ -349,13 +515,13 @@ const DriverPortal = () => {
               <CalendarClock className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-lg font-extrabold text-slate-800">Assigned Duty Schedule</h3>
-              <p className="text-xs text-slate-500 font-medium">Timetables & routes for <strong>{assignedDepotName}</strong></p>
+              <h3 className="text-lg font-extrabold text-slate-800">My Personal Duty Schedule</h3>
+              <p className="text-xs text-slate-500 font-medium">Timetables & routes assigned to you at <strong>{assignedDepotName}</strong></p>
             </div>
           </div>
 
           <div className="space-y-4">
-            {depotSchedules.map((s) => (
+            {driverDutySchedules.map((s) => (
               <div key={s._id} className="bg-slate-50 rounded-xl p-4 border border-slate-200/70 hover:border-purple-300 transition-all">
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
@@ -386,10 +552,10 @@ const DriverPortal = () => {
               </div>
             ))}
 
-            {depotSchedules.length === 0 && (
+            {driverDutySchedules.length === 0 && (
               <div className="text-center py-8 text-slate-400">
                 <CalendarClock className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                <p className="text-sm font-semibold">No active duty schedules assigned for {assignedDepotName}.</p>
+                <p className="text-sm font-semibold">No duty shifts assigned for your account.</p>
               </div>
             )}
           </div>

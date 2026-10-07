@@ -11,13 +11,13 @@ const memoryStore = require('../config/memoryStore');
 const getRequests = async (req, res) => {
   try {
     const userDepotId = req.user?.depotId ? (typeof req.user.depotId === 'object' ? req.user.depotId._id : req.user.depotId) : null;
-    const filterDepot = req.query.depotId || (req.user?.role === 'driver' || req.user?.role === 'depot_admin' ? userDepotId : null);
+    const filterDepot = req.query.depotId || (req.user?.role === 'depot_admin' ? userDepotId : null);
     const { status } = req.query;
 
     if (mongoose.connection.readyState !== 1) {
       let list = memoryStore.requests || [];
       if (req.user?.role === 'driver') {
-        list = list.filter(r => String(r.requestedBy) === String(req.user._id) || String(r.depotId) === String(filterDepot));
+        list = list.filter(r => String(r.requestedBy) === String(req.user._id));
       } else if (filterDepot) {
         list = list.filter(r => String(r.depotId) === String(filterDepot));
       }
@@ -29,7 +29,7 @@ const getRequests = async (req, res) => {
 
     let filter = {};
     if (req.user?.role === 'driver') {
-      filter.$or = [{ requestedBy: req.user._id }, { depotId: filterDepot }];
+      filter.requestedBy = req.user._id;
     } else if (filterDepot) {
       filter.depotId = filterDepot;
     }
@@ -52,21 +52,22 @@ const getRequests = async (req, res) => {
 const createRequest = async (req, res) => {
   try {
     const { requestType, depotId, vehicleId, vehicleReg, details } = req.body;
+    const safeDetails = details || {};
 
     const newReq = {
       _id: 'req_' + Date.now(),
-      requestType,
-      depotId,
+      requestType: requestType || 'maintenance',
+      depotId: depotId || req.user.depotId,
       requestedBy: req.user._id,
       requestedByName: req.user.username || req.user.name || 'Driver / Staff',
       requestedByRole: req.user.role || 'driver',
-      vehicleId,
-      vehicleReg,
+      vehicleId: vehicleId || null,
+      vehicleReg: vehicleReg || 'N/A',
       details: {
-        liters: Number(details.liters) || 0,
-        serviceType: details.serviceType || '',
-        description: details.description || '',
-        estimatedCost: Number(details.estimatedCost) || 0
+        liters: Number(safeDetails.liters) || 0,
+        serviceType: safeDetails.serviceType || '',
+        description: safeDetails.description || safeDetails.reason || '',
+        estimatedCost: Number(safeDetails.estimatedCost) || 0
       },
       status: 'pending',
       createdAt: new Date()
@@ -79,18 +80,18 @@ const createRequest = async (req, res) => {
     }
 
     const request = new Request({
-      requestType,
-      depotId,
+      requestType: requestType || 'maintenance',
+      depotId: depotId || req.user.depotId,
       requestedBy: req.user._id,
       requestedByName: req.user.username || req.user.name || 'Driver / Staff',
       requestedByRole: req.user.role || 'driver',
-      vehicleId,
-      vehicleReg,
+      vehicleId: vehicleId || null,
+      vehicleReg: vehicleReg || 'N/A',
       details: {
-        liters: Number(details.liters) || 0,
-        serviceType: details.serviceType || '',
-        description: details.description || '',
-        estimatedCost: Number(details.estimatedCost) || 0
+        liters: Number(safeDetails.liters) || 0,
+        serviceType: safeDetails.serviceType || '',
+        description: safeDetails.description || safeDetails.reason || '',
+        estimatedCost: Number(safeDetails.estimatedCost) || 0
       },
       status: 'pending'
     });

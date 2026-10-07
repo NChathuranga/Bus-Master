@@ -35,8 +35,37 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
+
+  // Forgot Password State
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotForm, setForgotForm] = useState({ accountIdentifier: '', newPassword: '' });
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotSuccess('');
+    setForgotLoading(true);
+
+    try {
+      const { data } = await api.post('/auth/forgot-password', forgotForm);
+      setForgotSuccess(data.message || 'Password reset successfully!');
+      setTimeout(() => {
+        setShowForgotModal(false);
+        setForgotForm({ accountIdentifier: '', newPassword: '' });
+        setForgotSuccess('');
+      }, 2000);
+    } catch (err) {
+      setForgotError(err.response?.data?.message || 'Failed to reset password. Please check your username/email.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   // Auto slide every 4 seconds
   useEffect(() => {
@@ -123,7 +152,7 @@ const Login = () => {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Username"
+                  placeholder="Username or Email (e.g. driver@busmaster.lk)"
                   className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all placeholder:text-slate-400"
                   required
                 />
@@ -142,11 +171,15 @@ const Login = () => {
                 />
               </div>
 
-              {/* Forgot */}
+              {/* Forgot Password Link */}
               <div className="flex justify-end">
-                <a href="#" className="text-xs font-semibold text-slate-400 hover:text-blue-600 transition-colors">
+                <button 
+                  type="button" 
+                  onClick={() => setShowForgotModal(true)} 
+                  className="text-xs font-semibold text-slate-400 hover:text-blue-600 transition-colors"
+                >
                   Forgot Password?
-                </a>
+                </button>
               </div>
 
               {/* Button */}
@@ -179,6 +212,85 @@ const Login = () => {
           </p>
 
         </div>
+
+        {/* Forgot Password Modal */}
+        {showForgotModal && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-scale-up">
+              <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-base">Reset Account Password</h3>
+                    <p className="text-xs text-slate-500">Enter your Username or Email to set a new password</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowForgotModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleForgotSubmit} className="space-y-4">
+                {forgotError && (
+                  <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{forgotError}</span>
+                  </div>
+                )}
+                {forgotSuccess && (
+                  <div className="p-3 bg-emerald-50 text-emerald-600 text-xs font-bold rounded-xl flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+                    <span>{forgotSuccess}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Username or Email Address</label>
+                  <input
+                    type="text"
+                    value={forgotForm.accountIdentifier}
+                    onChange={(e) => setForgotForm({ ...forgotForm, accountIdentifier: e.target.value })}
+                    required
+                    placeholder="e.g. driver_kamal or kamal.driver@busmaster.lk"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">New Password</label>
+                  <input
+                    type="password"
+                    value={forgotForm.newPassword}
+                    onChange={(e) => setForgotForm({ ...forgotForm, newPassword: e.target.value })}
+                    required
+                    minLength={6}
+                    placeholder="Enter new password (min 6 chars)"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(false)}
+                    className="px-4 py-2 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-extrabold text-xs rounded-xl shadow-md active:scale-95 disabled:opacity-50"
+                  >
+                    {forgotLoading ? 'Resetting...' : 'Reset Password'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* RIGHT - Image Carousel Section */}
         <div className="hidden md:block w-1/2 p-3">

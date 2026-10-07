@@ -26,6 +26,10 @@ const FuelLogs = () => {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
 
+  const [userRole, setUserRole] = useState('super_admin');
+  const userStr = localStorage.getItem('user');
+  const loggedInUser = userStr ? JSON.parse(userStr) : null;
+
   const fetchAll = async () => {
     try {
       const [l, v] = await Promise.all([api.get('/fuel-logs'), api.get('/vehicles')]);
@@ -37,8 +41,18 @@ const FuelLogs = () => {
   };
 
   useEffect(() => {
+    if (loggedInUser) {
+      setUserRole(loggedInUser.role || 'super_admin');
+    }
     fetchAll();
   }, []);
+
+  const driverLogs = useMemo(() => {
+    if (userRole === 'driver' && loggedInUser?._id) {
+      return logs.filter(l => String(l.driverId || l.requestedBy) === String(loggedInUser._id) || l.createdBy === loggedInUser.username);
+    }
+    return logs;
+  }, [logs, userRole, loggedInUser]);
 
   const exportPDF = () => {
     const doc = new jsPDF();
@@ -47,20 +61,20 @@ const FuelLogs = () => {
     doc.setFontSize(16);
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.text('Smart Bus Master System - Fuel Log Report', 14, 16);
+    doc.text(userRole === 'driver' ? 'My Personal Fuel Log Report' : 'Smart Bus Master System - Fuel Log Report', 14, 16);
 
     doc.setFontSize(9.5);
     doc.setTextColor(71, 85, 105);
     doc.setFont('helvetica', 'normal');
     doc.text(`Report Date: ${new Date().toLocaleDateString()}`, 14, 33);
-    doc.text(`Total Fuel Entries: ${summary.totalLogs}`, 14, 39);
+    doc.text(`Total Fuel Entries: ${driverLogs.length}`, 14, 39);
     doc.text(`Total Fuel Consumption: ${summary.totalLiters.toLocaleString()} Liters`, 14, 45);
     doc.text(`Total Fuel Expenditure: Rs. ${formatMoney(summary.totalCost)}`, 14, 51);
 
     autoTable(doc, {
       startY: 57,
       head: [['Vehicle Reg Number', 'Date', 'Refill Liters (L)', 'Cost (Rs.)', 'Avg Cost/L']],
-      body: logs.map((item) => {
+      body: driverLogs.map((item) => {
         const v = vehicles.find(veh => String(veh._id) === String(typeof item.vehicleId === 'object' ? item.vehicleId?._id : item.vehicleId));
         const reg = v ? v.registrationNumber : 'Bus Unit';
         const costPerL = item.liters > 0 ? (item.cost / item.liters).toFixed(2) : '0';
@@ -110,17 +124,17 @@ const FuelLogs = () => {
   };
 
   const summary = useMemo(() => {
-    const totalLiters = logs.reduce((sum, item) => sum + (Number(item.liters) || 0), 0);
-    const totalCost = logs.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
+    const totalLiters = driverLogs.reduce((sum, item) => sum + (Number(item.liters) || 0), 0);
+    const totalCost = driverLogs.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
     const avgCostPerLiter = totalLiters > 0 ? totalCost / totalLiters : 0;
 
     return {
-      totalLogs: logs.length,
+      totalLogs: driverLogs.length,
       totalLiters,
       totalCost,
       avgCostPerLiter
     };
-  }, [logs]);
+  }, [driverLogs]);
 
   const formatMoney = (value) => {
     return new Intl.NumberFormat('en-LK', {

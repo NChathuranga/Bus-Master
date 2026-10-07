@@ -1,4 +1,7 @@
 require('dotenv').config();
+const dns = require('dns');
+try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (e) {}
+
 const mongoose = require('mongoose');
 
 const Depot = require('./models/Depot');
@@ -65,18 +68,40 @@ const seedDatabase = async () => {
       status: 'active'
     });
 
+    const kuliyapitiyaDepot = await Depot.create({
+      name: 'Kuliyapitiya Bus Depot',
+      code: 'DEP-KUL',
+      city: 'Kuliyapitiya',
+      location: 'Main Bus Station, Madampe Road, Kuliyapitiya',
+      contactNumber: '037-2281234',
+      capacity: 75,
+      status: 'active'
+    });
+
+    const kurunegalaDepot = await Depot.create({
+      name: 'Kurunegala Central Depot',
+      code: 'DEP-KNG',
+      city: 'Kurunegala',
+      location: 'Central Bus Stand, Dambulla Road, Kurunegala',
+      contactNumber: '037-2222100',
+      capacity: 110,
+      status: 'active'
+    });
+
     // 2. Seed Users
     console.log('Seeding Users...');
     const superAdminUser = await User.create({
       username: 'superadmin',
+      email: 'superadmin@busmaster.lk',
       password: 'admin123',
       role: 'super_admin',
-      name: 'National Transit Admin',
+      name: 'System Administrator',
       depotId: colomboDepot._id
     });
 
     const adminUser = await User.create({
       username: 'admin',
+      email: 'admin@busmaster.lk',
       password: 'admin123',
       role: 'super_admin',
       name: 'System Admin',
@@ -85,6 +110,7 @@ const seedDatabase = async () => {
 
     const colomboAdminUser = await User.create({
       username: 'colombo_admin',
+      email: 'colombo.admin@busmaster.lk',
       password: 'admin123',
       role: 'depot_admin',
       name: 'Colombo Depot Manager',
@@ -93,6 +119,7 @@ const seedDatabase = async () => {
 
     const kandyAdminUser = await User.create({
       username: 'kandy_admin',
+      email: 'kandy.admin@busmaster.lk',
       password: 'admin123',
       role: 'depot_admin',
       name: 'Kandy Depot Manager',
@@ -101,18 +128,29 @@ const seedDatabase = async () => {
 
     const staffUser = await User.create({
       username: 'staff_colombo',
+      email: 'staff.colombo@busmaster.lk',
       password: 'admin123',
       role: 'staff',
       name: 'Colombo Dispatch Clerk',
       depotId: colomboDepot._id
     });
 
-    const driverUser = await User.create({
+    const driverUserKamal = await User.create({
       username: 'driver_kamal',
+      email: 'kamal.driver@busmaster.lk',
       password: 'admin123',
       role: 'driver',
-      name: 'Kamal Perera (Driver)',
+      name: 'Kamal Perera',
       depotId: colomboDepot._id
+    });
+
+    const driverUserNimal = await User.create({
+      username: 'driver_nimal',
+      email: 'nimal.driver@busmaster.lk',
+      password: 'admin123',
+      role: 'driver',
+      name: 'Nimal Silva',
+      depotId: kandyDepot._id
     });
 
     // 3. Seed Vehicles
@@ -152,7 +190,7 @@ const seedDatabase = async () => {
       contact: '0771234567',
       licenseExpiry: new Date('2027-12-31'),
       depotId: colomboDepot._id,
-      userId: driverUser._id,
+      userId: driverUserKamal._id,
       workingHours: 42,
       status: 'active'
     });
@@ -163,6 +201,7 @@ const seedDatabase = async () => {
       contact: '0719876543',
       licenseExpiry: new Date('2026-11-15'),
       depotId: kandyDepot._id,
+      userId: driverUserNimal._id,
       workingHours: 38,
       status: 'active'
     });
@@ -238,8 +277,8 @@ const seedDatabase = async () => {
     await Request.create({
       requestType: 'fuel',
       depotId: colomboDepot._id,
-      requestedBy: driverUser._id,
-      requestedByName: 'Kamal Perera (Driver)',
+      requestedBy: driverUserKamal._id,
+      requestedByName: 'Kamal Perera',
       requestedByRole: 'driver',
       vehicleId: bus1._id,
       vehicleReg: 'NC-4589',

@@ -33,6 +33,28 @@ const depots = [
     capacity: 65,
     status: 'active',
     createdAt: new Date()
+  },
+  {
+    _id: 'depot_004',
+    name: 'Kuliyapitiya Bus Depot',
+    code: 'DEP-KUL',
+    city: 'Kuliyapitiya',
+    location: 'Main Bus Station, Madampe Road, Kuliyapitiya',
+    contactNumber: '037-2281234',
+    capacity: 75,
+    status: 'active',
+    createdAt: new Date()
+  },
+  {
+    _id: 'depot_005',
+    name: 'Kurunegala Central Depot',
+    code: 'DEP-KNG',
+    city: 'Kurunegala',
+    location: 'Central Bus Stand, Dambulla Road, Kurunegala',
+    contactNumber: '037-2222100',
+    capacity: 110,
+    status: 'active',
+    createdAt: new Date()
   }
 ];
 
@@ -42,7 +64,7 @@ const users = [
     username: 'superadmin',
     password: bcrypt.hashSync('admin123', 10),
     role: 'super_admin',
-    name: 'National Transit Admin',
+    name: 'System Administrator',
     depotId: 'depot_001',
     createdAt: new Date()
   },
@@ -87,7 +109,7 @@ const users = [
     username: 'driver_kamal',
     password: bcrypt.hashSync('admin123', 10),
     role: 'driver',
-    name: 'Kamal Perera (Driver)',
+    name: 'Kamal Perera',
     depotId: 'depot_001',
     createdAt: new Date()
   }

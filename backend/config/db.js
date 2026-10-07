@@ -1,3 +1,6 @@
+const dns = require('dns');
+try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (e) {}
+
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
@@ -23,12 +26,12 @@ const connectDB = async () => {
     // 1. Try process.env.MONGO_URI if defined and not broken
     if (process.env.MONGO_URI && !process.env.MONGO_URI.includes('cluster0.fyrkaur.mongodb.net')) {
       try {
-        await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 3000 });
-        console.log('✅ MongoDB database connected successfully.');
+        await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15000 });
+        console.log('✅ MongoDB Atlas Cloud database connected successfully.');
         await seedDatabaseIfEmpty();
         return;
       } catch (err) {
-        console.log('⚠️ Configured MONGO_URI connection failed, trying local MongoDB instance...');
+        console.log('⚠️ Configured MONGO_URI connection failed:', err.message);
       }
     }
 
@@ -75,6 +78,66 @@ const connectDB = async () => {
         contactNumber: '081-2234120',
         capacity: 85,
         status: 'active'
+      });
+
+      const kuliyapitiyaDepot = await Depot.create({
+        name: 'Kuliyapitiya Bus Depot',
+        code: 'DEP-KUL',
+        city: 'Kuliyapitiya',
+        location: 'Main Bus Station, Madampe Road, Kuliyapitiya',
+        contactNumber: '037-2281234',
+        capacity: 75,
+        status: 'active'
+      });
+
+      const kurunegalaDepot = await Depot.create({
+        name: 'Kurunegala Central Depot',
+        code: 'DEP-KNG',
+        city: 'Kurunegala',
+        location: 'Central Bus Stand, Dambulla Road, Kurunegala',
+        contactNumber: '037-2222100',
+        capacity: 110,
+        status: 'active'
+      });
+
+      await User.create({
+        username: 'superadmin',
+        password: 'admin123',
+        role: 'super_admin',
+        name: 'System Administrator',
+        depotId: colomboDepot._id
+      });
+
+      await User.create({
+        username: 'admin',
+        password: 'admin123',
+        role: 'super_admin',
+        name: 'System Admin',
+        depotId: colomboDepot._id
+      });
+
+      await User.create({
+        username: 'colombo_admin',
+        password: 'admin123',
+        role: 'depot_admin',
+        name: 'Colombo Depot Manager',
+        depotId: colomboDepot._id
+      });
+
+      await User.create({
+        username: 'kandy_admin',
+        password: 'admin123',
+        role: 'depot_admin',
+        name: 'Kandy Depot Manager',
+        depotId: kandyDepot._id
+      });
+
+      await User.create({
+        username: 'staff_colombo',
+        password: 'admin123',
+        role: 'staff',
+        name: 'Colombo Dispatch Clerk',
+        depotId: colomboDepot._id
       });
 
       const driverUser = await User.create({

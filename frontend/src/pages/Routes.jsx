@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { 
   Map, MapPin, Flag, Milestone, Ruler, Plus, 
-  Save, Pencil, Trash2, AlertCircle, X, Navigation, Eye
+  Save, Pencil, Trash2, AlertCircle, X, Navigation, Eye, Search
 } from 'lucide-react';
 import Layout from '../components/Layout';
+import Toast from '../components/Toast';
 import RouteMap from '../components/RouteMap';
 import api from '../api/axios';
 
@@ -15,6 +16,8 @@ const RoutesPage = () => {
   const [editingId, setEditingId] = useState(null);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [error, setError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [toast, setToast] = useState({ message: '', type: 'success' });
 
   const fetchRoutes = async () => {
     try {
@@ -30,6 +33,15 @@ const RoutesPage = () => {
 
   useEffect(() => { fetchRoutes(); }, []);
 
+  const filteredRoutes = routes.filter((r) => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    const start = r.startPoint?.toLowerCase() || '';
+    const end = r.endPoint?.toLowerCase() || '';
+    const stopsStr = Array.isArray(r.stops) ? r.stops.join(' ').toLowerCase() : '';
+    return start.includes(term) || end.includes(term) || stopsStr.includes(term);
+  });
+
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
@@ -44,14 +56,18 @@ const RoutesPage = () => {
       };
       if (editingId) {
         await api.put(`/routes/${editingId}`, payload);
+        setToast({ message: 'Route updated successfully!', type: 'success' });
       } else {
         await api.post('/routes', payload);
+        setToast({ message: 'New route created & mapped!', type: 'success' });
       }
       setForm(emptyForm);
       setEditingId(null);
       fetchRoutes();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save route');
+      const msg = err.response?.data?.message || 'Failed to save route';
+      setError(msg);
+      setToast({ message: msg, type: 'error' });
     }
   };
 
@@ -203,8 +219,30 @@ const RoutesPage = () => {
         </form>
       </div>
 
+      <Toast 
+        message={toast.message} 
+        type={toast.type} 
+        onClose={() => setToast({ message: '', type: 'success' })} 
+      />
+
       {/* Table Section */}
       <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 overflow-hidden animate-fade-in-up">
+        
+        {/* Search Bar */}
+        <div className="p-4 bg-slate-50/80 border-b border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Search route or intermediate stops..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+            />
+          </div>
+          <span className="text-xs font-semibold text-slate-500">Showing {filteredRoutes.length} route(s)</span>
+        </div>
+
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-xs tracking-wider border-b border-slate-200">
@@ -217,7 +255,7 @@ const RoutesPage = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-              {routes.map((r) => (
+              {filteredRoutes.map((r) => (
                 <tr 
                   key={r._id} 
                   className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${

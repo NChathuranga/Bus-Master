@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { 
   BusFront, Hash, Users, Activity, Plus, Save, Pencil, Gauge,
-  Trash2, AlertCircle, X, CheckCircle2, Navigation, Wrench, Settings2
+  Trash2, AlertCircle, X, CheckCircle2, Navigation, Wrench, Settings2, Search, Filter
 } from 'lucide-react';
 import Layout from '../components/Layout';
+import Toast from '../components/Toast';
 import { useDepot } from '../context/DepotContext';
 import api from '../api/axios';
 
@@ -14,6 +15,9 @@ const Vehicles = () => {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [toast, setToast] = useState({ message: '', type: 'success' });
   const { activeDepot, activeDepotObj } = useDepot();
 
   const fetchVehicles = async () => {
@@ -33,9 +37,13 @@ const Vehicles = () => {
     return typeof entity === 'object' ? String(entity._id || '') : String(entity);
   };
 
-  const filteredVehicles = activeDepot === 'all' 
-    ? vehicles 
-    : vehicles.filter(v => getEntityId(v.depotId) === String(activeDepot));
+  const filteredVehicles = vehicles.filter(v => {
+    const matchesDepot = activeDepot === 'all' || getEntityId(v.depotId) === String(activeDepot);
+    const matchesSearch = v.registrationNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          v.type?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || v.status === statusFilter;
+    return matchesDepot && matchesSearch && matchesStatus;
+  });
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -51,14 +59,18 @@ const Vehicles = () => {
       };
       if (editingId) {
         await api.put(`/vehicles/${editingId}`, payload);
+        setToast({ message: 'Vehicle updated successfully!', type: 'success' });
       } else {
         await api.post('/vehicles', payload);
+        setToast({ message: 'New vehicle registered successfully!', type: 'success' });
       }
       setForm(emptyForm);
       setEditingId(null);
       fetchVehicles();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save vehicle');
+      const msg = err.response?.data?.message || 'Failed to save vehicle';
+      setError(msg);
+      setToast({ message: msg, type: 'error' });
     }
   };
 
@@ -219,8 +231,43 @@ const Vehicles = () => {
         </form>
       </div>
 
+      <Toast 
+        message={toast.message} 
+        type={toast.type} 
+        onClose={() => setToast({ message: '', type: 'success' })} 
+      />
+
       {/* Table Section */}
       <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 overflow-hidden animate-fade-in-up">
+        
+        {/* Search & Filter Bar */}
+        <div className="p-4 bg-slate-50/80 border-b border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Search plate or bus type..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Filter className="w-4 h-4 text-slate-400" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none cursor-pointer"
+            >
+              <option value="all">All Statuses</option>
+              <option value="available">Available</option>
+              <option value="on-route">On Route</option>
+              <option value="maintenance">Maintenance</option>
+            </select>
+          </div>
+        </div>
+
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-xs tracking-wider border-b border-slate-200">

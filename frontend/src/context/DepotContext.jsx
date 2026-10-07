@@ -11,8 +11,12 @@ export const DepotProvider = ({ children }) => {
 
   const fetchDepots = async () => {
     try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
       const { data } = await api.get('/depots');
-      setDepots(data);
+      if (Array.isArray(data)) {
+        setDepots(data);
+      }
     } catch (err) {
       console.error('Failed to load depots into context:', err);
     }
@@ -28,7 +32,7 @@ export const DepotProvider = ({ children }) => {
   };
 
   const getActiveDepotObj = () => {
-    if (activeDepot === 'all') return null;
+    if (activeDepot === 'all' || !Array.isArray(depots)) return null;
     return depots.find(d => String(d._id) === String(activeDepot)) || null;
   };
 
@@ -36,7 +40,7 @@ export const DepotProvider = ({ children }) => {
     <DepotContext.Provider value={{
       activeDepot,
       setActiveDepot,
-      depots,
+      depots: Array.isArray(depots) ? depots : [],
       fetchDepots,
       activeDepotObj: getActiveDepotObj()
     }}>

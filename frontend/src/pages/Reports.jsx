@@ -7,7 +7,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
   BarChart4, Download, Fuel, Wrench, BusFront, Wallet, 
-  TrendingUp, FileText, Loader2, Leaf, ShieldCheck
+  TrendingUp, FileText, Loader2, Leaf, ShieldCheck, Building2
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useDepot } from '../context/DepotContext';
@@ -26,9 +26,23 @@ const Reports = () => {
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
-    setSelectedDepot(activeDepot);
-  }, [activeDepot]);
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const u = JSON.parse(userStr);
+      const role = u.role || 'super_admin';
+      setUserRole(role);
+      if ((role === 'depot_admin' || role === 'driver') && u.depotId) {
+        const dId = typeof u.depotId === 'object' ? u.depotId._id : u.depotId;
+        setSelectedDepot(dId);
+      }
+    }
+  }, []);
 
+  useEffect(() => {
+    if (userRole !== 'driver' && userRole !== 'depot_admin') {
+      setSelectedDepot(activeDepot);
+    }
+  }, [activeDepot, userRole]);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -43,15 +57,6 @@ const Reports = () => {
         setMaintenance(m.data);
         setVehicles(v.data);
         setDepots(d.data);
-
-        const userStr = localStorage.getItem('user');
-        if (userStr) {
-          const u = JSON.parse(userStr);
-          setUserRole(u.role || 'super_admin');
-          if (u.role === 'depot_admin' && u.depotId) {
-            setSelectedDepot(typeof u.depotId === 'object' ? u.depotId._id : u.depotId);
-          }
-        }
       } catch (err) {
         console.error('Error fetching report data:', err);
       }
@@ -89,20 +94,24 @@ const Reports = () => {
     return typeof entity === 'object' ? String(entity._id || '') : String(entity);
   };
 
-  // Filter Data based on selected depot
+  const userStr = localStorage.getItem('user');
+  const loggedInUser = userStr ? JSON.parse(userStr) : null;
+  const isDriverRole = userRole === 'driver';
+
+  // Filter Data based on selected depot and role
   const filteredVehicles = selectedDepot === 'all' 
     ? vehicles 
     : vehicles.filter(v => getEntityId(v.depotId) === String(selectedDepot));
 
   const vehicleIds = filteredVehicles.map(v => String(v._id));
 
-  const filteredFuelLogs = selectedDepot === 'all'
-    ? fuelLogs
-    : fuelLogs.filter(f => vehicleIds.includes(getEntityId(f.vehicleId)));
+  const filteredFuelLogs = isDriverRole
+    ? fuelLogs.filter(f => String(f.driverId || f.requestedBy) === String(loggedInUser?._id) || f.createdBy === loggedInUser?.username)
+    : (selectedDepot === 'all' ? fuelLogs : fuelLogs.filter(f => vehicleIds.includes(getEntityId(f.vehicleId))));
 
-  const filteredMaintenance = selectedDepot === 'all'
-    ? maintenance
-    : maintenance.filter(m => vehicleIds.includes(getEntityId(m.vehicleId)));
+  const filteredMaintenance = isDriverRole
+    ? maintenance.filter(m => String(m.driverId || m.requestedBy) === String(loggedInUser?._id) || m.createdBy === loggedInUser?.username)
+    : (selectedDepot === 'all' ? maintenance : maintenance.filter(m => vehicleIds.includes(getEntityId(m.vehicleId))));
 
   const monthlySummary = (() => {
     const map = {};
@@ -145,8 +154,15 @@ const Reports = () => {
   const totalExpenses = totalFuelCost + totalMaintenanceCost;
   const estimatedCarbonKg = Math.round(totalFuelLiters * 2.68);
 
+  const userDepotId = loggedInUser?.depotId ? (typeof loggedInUser.depotId === 'object' ? loggedInUser.depotId._id : loggedInUser.depotId) : null;
+  const driverDepotObj = depots.find(d => String(d._id) === String(userDepotId));
+  const driverDepotName = driverDepotObj?.name || (userDepotId === 'depot_002' ? 'Kandy Central Bus Depot' : 'Colombo Central Bus Depot');
+
   const activeDepotObj = depots.find(d => String(d._id) === String(selectedDepot));
-  const depotTitle = selectedDepot === 'all' ? 'All Depots (National Overview)' : (activeDepotObj?.name || 'Colombo Central Depot');
+  const driverCleanName = (loggedInUser?.name || loggedInUser?.username || 'Driver').replace(/\s*\((?:Driver|Admin)\)/gi, '').trim();
+  const depotTitle = isDriverRole 
+    ? driverDepotName 
+    : (selectedDepot === 'all' ? 'All Depots (National Overview)' : (activeDepotObj?.name || 'Colombo Central Bus Depot'));
 
   const exportPDF = () => {
     setIsExporting(true);
@@ -160,7 +176,7 @@ const Reports = () => {
       doc.setFontSize(18);
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
-      doc.text('Smart Bus Master System (SRMSS)', 14, 16);
+      doc.text(isDriverRole ? 'Personal Driver Duty & Performance Report' : 'Smart Bus Master System (SRMSS)', 14, 16);
       
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
@@ -295,21 +311,28 @@ const Reports = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Super Admin Depot Filter */}
-          <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl">
-            <span className="text-xs font-black text-amber-900 uppercase">Depot:</span>
-            <select
-              value={selectedDepot}
-              onChange={(e) => setSelectedDepot(e.target.value)}
-              disabled={userRole === 'depot_admin'}
-              className="bg-white border border-amber-300 text-slate-800 font-bold text-xs rounded-lg px-2.5 py-1 outline-none cursor-pointer"
-            >
-              <option value="all">🌐 All Depots (National)</option>
-              {depots.map(d => (
-                <option key={d._id} value={d._id}>🏢 {d.name}</option>
-              ))}
-            </select>
-          </div>
+          {/* Depot Filter for Admin/SuperAdmin, hidden for Drivers */}
+          {!isDriverRole ? (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl">
+              <span className="text-xs font-black text-amber-900 uppercase">Depot:</span>
+              <select
+                value={selectedDepot}
+                onChange={(e) => setSelectedDepot(e.target.value)}
+                disabled={userRole === 'depot_admin'}
+                className="bg-white border border-amber-300 text-slate-800 font-bold text-xs rounded-lg px-2.5 py-1 outline-none cursor-pointer"
+              >
+                <option value="all">🌐 All Depots (National)</option>
+                {depots.map(d => (
+                  <option key={d._id} value={d._id}>🏢 {d.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-900 px-3.5 py-2 rounded-xl text-xs font-black shadow-sm">
+              <Building2 className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Depot: <strong className="text-amber-950 font-extrabold">{driverDepotName}</strong></span>
+            </div>
+          )}
 
           <button 
             onClick={exportPDF} 
@@ -317,7 +340,7 @@ const Reports = () => {
             className="group flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-emerald-200 hover:from-emerald-600 hover:to-teal-700 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isExporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />}
-            {isExporting ? 'Generating Report...' : 'Export Depot PDF'}
+            {isExporting ? 'Generating Report...' : (isDriverRole ? 'Export My Driver PDF' : 'Export Depot PDF')}
           </button>
         </div>
       </div>

@@ -27,6 +27,10 @@ const Maintenance = () => {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
 
+  const [userRole, setUserRole] = useState('super_admin');
+  const userStr = localStorage.getItem('user');
+  const loggedInUser = userStr ? JSON.parse(userStr) : null;
+
   const fetchAll = async () => {
     try {
       const [m, v] = await Promise.all([api.get('/maintenance'), api.get('/vehicles')]);
@@ -38,8 +42,18 @@ const Maintenance = () => {
   };
 
   useEffect(() => {
+    if (loggedInUser) {
+      setUserRole(loggedInUser.role || 'super_admin');
+    }
     fetchAll();
   }, []);
+
+  const driverRecords = useMemo(() => {
+    if (userRole === 'driver' && loggedInUser?._id) {
+      return records.filter(m => String(m.driverId || m.requestedBy) === String(loggedInUser._id) || m.createdBy === loggedInUser.username);
+    }
+    return records;
+  }, [records, userRole, loggedInUser]);
 
   const exportPDF = () => {
     const doc = new jsPDF();
@@ -48,19 +62,19 @@ const Maintenance = () => {
     doc.setFontSize(16);
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.text('Smart Bus Master System - Maintenance Audit Report', 14, 16);
+    doc.text(userRole === 'driver' ? 'My Personal Maintenance Work Report' : 'Smart Bus Master System - Maintenance Audit Report', 14, 16);
 
     doc.setFontSize(9.5);
     doc.setTextColor(71, 85, 105);
     doc.setFont('helvetica', 'normal');
     doc.text(`Report Date: ${new Date().toLocaleDateString()}`, 14, 33);
-    doc.text(`Total Maintenance Records: ${summary.totalRecords}`, 14, 39);
+    doc.text(`Total Maintenance Records: ${driverRecords.length}`, 14, 39);
     doc.text(`Total Maintenance Expenditure: Rs. ${formatMoney(summary.totalCost)}`, 14, 45);
 
     autoTable(doc, {
       startY: 52,
       head: [['Vehicle Reg Number', 'Service Category', 'Details / Notes', 'Date', 'Cost (Rs.)', 'Status']],
-      body: records.map((item) => {
+      body: driverRecords.map((item) => {
         const v = vehicles.find(veh => String(veh._id) === String(typeof item.vehicleId === 'object' ? item.vehicleId?._id : item.vehicleId));
         const reg = v ? v.registrationNumber : 'Bus Unit';
         return [
@@ -109,15 +123,15 @@ const Maintenance = () => {
   };
 
   const summary = useMemo(() => {
-    const totalCost = records.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
-    const serviceTypes = new Set(records.map((r) => r.serviceType).filter(Boolean));
+    const totalCost = driverRecords.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
+    const serviceTypes = new Set(driverRecords.map((r) => r.serviceType || r.type).filter(Boolean));
     return {
-      totalRecords: records.length,
+      totalRecords: driverRecords.length,
       totalCost,
       uniqueServices: serviceTypes.size,
       vehiclesCount: vehicles.length
     };
-  }, [records, vehicles]);
+  }, [driverRecords, vehicles]);
 
   const formatMoney = (value) => {
     return new Intl.NumberFormat('en-LK', {

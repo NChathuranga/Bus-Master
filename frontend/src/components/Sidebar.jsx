@@ -116,7 +116,7 @@ const Sidebar = () => {
         <div className="flex items-center justify-between px-1">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Logged Role:</span>
           <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider bg-amber-950/50 px-2.5 py-1 rounded-lg border border-amber-800/40">
-            {userRole.replace('_', ' ')}
+            {(userRole || 'super_admin').replace('_', ' ')}
           </span>
         </div>
       </div>

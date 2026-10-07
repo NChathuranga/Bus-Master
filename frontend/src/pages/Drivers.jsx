@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { 
   Users, IdCard, Phone, CalendarClock, Activity, Clock,
-  Plus, Save, Pencil, Trash2, AlertCircle, X, BadgeCheck, TriangleAlert
+  Plus, Save, Pencil, Trash2, AlertCircle, X, BadgeCheck, TriangleAlert, Search, Filter
 } from 'lucide-react';
 import Layout from '../components/Layout';
+import Toast from '../components/Toast';
 import { useDepot } from '../context/DepotContext';
 import api from '../api/axios';
 
@@ -14,6 +15,9 @@ const Drivers = () => {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [toast, setToast] = useState({ message: '', type: 'success' });
   const { activeDepot, depots } = useDepot();
 
   const fetchDrivers = async () => {
@@ -40,9 +44,13 @@ const Drivers = () => {
     return found ? found.name : 'Central Depot';
   };
 
-  const filteredDrivers = activeDepot === 'all'
-    ? drivers
-    : drivers.filter(d => getEntityId(d.depotId) === String(activeDepot));
+  const filteredDrivers = drivers.filter(d => {
+    const matchesDepot = activeDepot === 'all' || getEntityId(d.depotId) === String(activeDepot);
+    const matchesSearch = d.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          d.licenseNumber?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || d.status === statusFilter;
+    return matchesDepot && matchesSearch && matchesStatus;
+  });
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -58,14 +66,18 @@ const Drivers = () => {
       };
       if (editingId) {
         await api.put(`/drivers/${editingId}`, payload);
+        setToast({ message: 'Driver details updated successfully!', type: 'success' });
       } else {
         await api.post('/drivers', payload);
+        setToast({ message: 'New driver registered successfully!', type: 'success' });
       }
       setForm(emptyForm);
       setEditingId(null);
       fetchDrivers();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save driver');
+      const msg = err.response?.data?.message || 'Failed to save driver';
+      setError(msg);
+      setToast({ message: msg, type: 'error' });
     }
   };
 
@@ -250,8 +262,43 @@ const Drivers = () => {
         </form>
       </div>
 
+      <Toast 
+        message={toast.message} 
+        type={toast.type} 
+        onClose={() => setToast({ message: '', type: 'success' })} 
+      />
+
       {/* Table Section */}
       <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 overflow-hidden animate-fade-in-up">
+        
+        {/* Search & Filter Bar */}
+        <div className="p-4 bg-slate-50/80 border-b border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Search driver name or license..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Filter className="w-4 h-4 text-slate-400" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="py-2 px-3 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none cursor-pointer"
+            >
+              <option value="all">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="on-leave">On Leave</option>
+            </select>
+          </div>
+        </div>
+
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-xs tracking-wider border-b border-slate-200">

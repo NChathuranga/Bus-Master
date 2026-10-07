@@ -3,9 +3,10 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
   CalendarDays, CalendarClock, Map, BusFront, User, 
-  Clock, ArrowRight, Plus, Save, Pencil, Trash2, AlertCircle, X, Filter, AlertTriangle, Download
+  Clock, ArrowRight, Plus, Save, Pencil, Trash2, AlertCircle, X, Filter, AlertTriangle, Download, Search
 } from 'lucide-react';
 import Layout from '../components/Layout';
+import Toast from '../components/Toast';
 import { useDepot } from '../context/DepotContext';
 import api from '../api/axios';
 
@@ -19,7 +20,9 @@ const Schedules = () => {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [timeFilter, setTimeFilter] = useState('all'); // 'all', 'daily', 'weekly', 'monthly'
+  const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
+  const [toast, setToast] = useState({ message: '', type: 'success' });
   const { activeDepot } = useDepot();
 
   const fetchAll = async () => {
@@ -87,14 +90,18 @@ const Schedules = () => {
     try {
       if (editingId) {
         await api.put(`/schedules/${editingId}`, form);
+        setToast({ message: 'Schedule updated successfully!', type: 'success' });
       } else {
         await api.post('/schedules', form);
+        setToast({ message: 'New schedule rostered successfully!', type: 'success' });
       }
       setForm(emptyForm);
       setEditingId(null);
       fetchAll();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save schedule. Check for time conflicts.');
+      const msg = err.response?.data?.message || 'Failed to save schedule. Check for time conflicts.';
+      setError(msg);
+      setToast({ message: msg, type: 'error' });
     }
   };
 
@@ -145,11 +152,22 @@ const Schedules = () => {
     };
   };
 
-  // Filter schedules based on activeDepot and Daily/Weekly/Monthly view
+  // Filter schedules based on activeDepot, search term, and Daily/Weekly/Monthly view
   const filteredSchedules = schedules.filter((s) => {
     if (activeDepot !== 'all') {
       const v = vehicles.find(veh => String(veh._id) === String(s.vehicleId?._id || s.vehicleId));
       if (v && String(v.depotId) !== String(activeDepot)) return false;
+    }
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      const rStart = s.routeId?.startPoint?.toLowerCase() || '';
+      const rEnd = s.routeId?.endPoint?.toLowerCase() || '';
+      const vReg = s.vehicleId?.registrationNumber?.toLowerCase() || '';
+      const dName = s.driverId?.name?.toLowerCase() || '';
+      if (!rStart.includes(term) && !rEnd.includes(term) && !vReg.includes(term) && !dName.includes(term)) {
+        return false;
+      }
     }
 
     if (timeFilter === 'all') return true;
@@ -345,8 +363,30 @@ const Schedules = () => {
         </form>
       </div>
 
+      <Toast 
+        message={toast.message} 
+        type={toast.type} 
+        onClose={() => setToast({ message: '', type: 'success' })} 
+      />
+
       {/* Table Section */}
       <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 overflow-hidden animate-fade-in-up">
+        
+        {/* Search Bar */}
+        <div className="p-4 bg-slate-50/80 border-b border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Search route, driver, or bus plate..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-all"
+            />
+          </div>
+          <span className="text-xs font-semibold text-slate-500">Showing {filteredSchedules.length} schedule(s)</span>
+        </div>
+
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-xs tracking-wider border-b border-slate-200">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { 
   Building2, MapPin, Phone, BusFront, Plus, Save, Pencil, 
-  Trash2, AlertCircle, X, ShieldAlert, BadgeCheck, RotateCcw, Clock, AlertTriangle, User, CheckCircle2
+  Trash2, AlertCircle, X, ShieldAlert, BadgeCheck, RotateCcw, Clock, AlertTriangle, User, CheckCircle2, Search
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import api from '../api/axios';
@@ -19,6 +19,7 @@ const Depots = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [userRole, setUserRole] = useState('super_admin');
   const [filterTab, setFilterTab] = useState('all'); // 'all' | 'active' | 'inactive'
+  const [searchTerm, setSearchTerm] = useState('');
 
   const fetchDepots = async () => {
     try {
@@ -114,9 +115,17 @@ const Depots = () => {
   };
 
   const filteredDepots = depots.filter(d => {
-    if (filterTab === 'active') return d.status !== 'inactive';
-    if (filterTab === 'inactive') return d.status === 'inactive';
-    return true;
+    if (filterTab === 'active' && d.status === 'inactive') return false;
+    if (filterTab === 'inactive' && d.status !== 'inactive') return false;
+    if (!searchTerm) return true;
+    const q = searchTerm.toLowerCase().trim();
+    return (
+      d.name?.toLowerCase().includes(q) ||
+      d.code?.toLowerCase().includes(q) ||
+      d.city?.toLowerCase().includes(q) ||
+      d.location?.toLowerCase().includes(q) ||
+      d.contactNumber?.includes(q)
+    );
   });
 
   const activeCount = depots.filter(d => d.status !== 'inactive').length;
@@ -125,7 +134,7 @@ const Depots = () => {
   return (
     <Layout>
       {/* Header Section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 animate-fade-in-up">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4 animate-fade-in-up">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-amber-100 text-amber-600 rounded-2xl shadow-inner">
             <Building2 className="w-8 h-8" />
@@ -141,32 +150,53 @@ const Depots = () => {
           </div>
         </div>
 
-        {/* Stats & Filter Tabs */}
-        <div className="flex items-center gap-2 bg-white border border-slate-200 p-1.5 rounded-2xl shadow-sm">
-          <button 
-            onClick={() => setFilterTab('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-              filterTab === 'all' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            All ({depots.length})
-          </button>
-          <button 
-            onClick={() => setFilterTab('active')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-              filterTab === 'active' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Active ({activeCount})
-          </button>
-          <button 
-            onClick={() => setFilterTab('inactive')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1 ${
-              filterTab === 'inactive' ? 'bg-rose-600 text-white shadow-sm' : 'text-rose-600 hover:bg-rose-50'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" /> Pending Delete ({inactiveCount})
-          </button>
+        {/* Live Search Bar & Stats Filter Tabs */}
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          <div className="relative flex-1 sm:w-64">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search depots by name, city, code..."
+              className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-8 py-2 text-xs font-bold text-slate-700 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-xs"
+            />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-white border border-slate-200 p-1.5 rounded-2xl shadow-xs">
+            <button 
+              onClick={() => setFilterTab('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+                filterTab === 'all' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              All ({depots.length})
+            </button>
+            <button 
+              onClick={() => setFilterTab('active')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+                filterTab === 'active' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              Active ({activeCount})
+            </button>
+            <button 
+              onClick={() => setFilterTab('inactive')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1 ${
+                filterTab === 'inactive' ? 'bg-rose-600 text-white shadow-sm' : 'text-rose-600 hover:bg-rose-50'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" /> Pending Delete ({inactiveCount})
+            </button>
+          </div>
         </div>
       </div>
 
